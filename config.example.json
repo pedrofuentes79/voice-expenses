@@ -1,0 +1,15 @@
+{
+  "category_descriptions": {
+    "Supermercado": "compras de supermercado para la casa",
+    "Salidas": "restaurantes, bares, cine",
+    "Transporte": "colectivo, subte, taxis, apps de viaje",
+    "Compras": "objetos y servicios digitales"
+  },
+  "expense_categories": ["Supermercado", "Salidas", "Transporte", "Compras"],
+  "income_categories": ["Sueldo"],
+  "payment_methods": ["Efectivo", "Débito", "Crédito", "Transferencia"],
+  "examples": [
+    {"note": "pizza con amigos", "kind": "expense", "amount": 20000, "currency": "ARS",
+     "category": "Salidas", "payment_method": "Efectivo", "date": "2026-01-01"}
+  ]
+}

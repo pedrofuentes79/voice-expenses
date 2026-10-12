@@ -1,0 +1,8 @@
+.env
+.venv/
+data/
+__pycache__/
+terms.txt
+config.json
+*.log
+.ruff_cache/

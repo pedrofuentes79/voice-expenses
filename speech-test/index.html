@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Speech Test">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.png">
+<title>Speech Test</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fff; --fg: #111; --muted: #666; --card: #f2f2f5; --accent: #0a7cff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #000; --fg: #eee; --muted: #999; --card: #1c1c1e; } }
+  body { margin: 0; padding: env(safe-area-inset-top) 16px 32px; background: var(--bg); color: var(--fg);
+         font: 16px -apple-system, system-ui, sans-serif; }
+  h1 { font-size: 22px; margin: 16px 0 4px; }
+  .muted { color: var(--muted); font-size: 14px; }
+  section { background: var(--card); border-radius: 14px; padding: 14px; margin-top: 14px; }
+  button { width: 100%; padding: 16px; font-size: 17px; border: 0; border-radius: 12px; background: var(--accent);
+           color: #fff; margin-top: 8px; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+  button.active { background: #e0352b; }
+  select { font-size: 16px; padding: 6px; }
+  .out { white-space: pre-wrap; word-break: break-word; margin-top: 10px; min-height: 1.4em; }
+  audio { width: 100%; margin-top: 10px; }
+  #log { font: 12px ui-monospace, monospace; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>Speech test</h1>
+<div class="muted" id="env"></div>
+<label class="muted">Language
+  <select id="lang">
+    <option value="es-AR">es-AR</option>
+    <option value="es-ES">es-ES</option>
+    <option value="en-US">en-US</option>
+  </select>
+</label>
+
+<section>
+  <strong>1. Safari speech recognition</strong>
+  <div class="muted">Tap, speak, tap again (or it stops on silence).</div>
+  <button id="srBtn">Start listening</button>
+  <div class="out" id="srOut"></div>
+</section>
+
+<section>
+  <strong>2. Record → server (OpenAI transcribe + gpt-5-nano)</strong>
+  <div class="muted">Hold to record, release to stop.</div>
+  <button id="recBtn">Hold to record</button>
+  <div class="out" id="recOut"></div>
+  <audio id="player" controls hidden></audio>
+  <div class="out" id="serverOut"></div>
+</section>
+
+<section>
+  <strong>Log</strong>
+  <div id="log"></div>
+</section>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const log = (msg) => { $("log").textContent = `${new Date().toLocaleTimeString()} ${msg}\n` + $("log").textContent; };
+
+const standalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+$("env").textContent = `${standalone ? "Home Screen app" : "Safari tab"} · SpeechRecognition: ${
+  "webkitSpeechRecognition" in window || "SpeechRecognition" in window ? "present" : "missing"} · MediaRecorder: ${
+  "MediaRecorder" in window ? "present" : "missing"}`;
+
+// 1. Web Speech API
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null;
+$("srBtn").onclick = () => {
+  if (!SR) { $("srOut").textContent = "Not available in this context."; return; }
+  if (rec) { rec.stop(); return; }
+  rec = new SR();
+  rec.lang = $("lang").value;
+  rec.interimResults = true;
+  rec.continuous = false;
+  const t0 = performance.now();
+  rec.onstart = () => { $("srBtn").textContent = "Listening… tap to stop"; $("srBtn").classList.add("active"); log("sr start"); };
+  rec.onresult = (e) => {
+    const text = Array.from(e.results).map((r) => r[0].transcript).join(" ");
+    const final = e.results[e.results.length - 1].isFinal;
+    $("srOut").textContent = text + (final ? `\n✓ final (${Math.round(performance.now() - t0)} ms)` : " …");
+  };
+  rec.onerror = (e) => { $("srOut").textContent = `Error: ${e.error}`; log(`sr error ${e.error} ${e.message || ""}`); };
+  rec.onend = () => { $("srBtn").textContent = "Start listening"; $("srBtn").classList.remove("active"); rec = null; log("sr end"); };
+  try { rec.start(); } catch (err) { $("srOut").textContent = `start() threw: ${err}`; rec = null; }
+};
+
+// 2. MediaRecorder, hold to talk
+let recorder = null, chunks = [], stream = null, recStart = 0;
+async function startRec(e) {
+  e.preventDefault();
+  if (recorder) return;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) { $("recOut").textContent = `getUserMedia failed: ${err.name} ${err.message}`; return; }
+  chunks = [];
+  recorder = new MediaRecorder(stream);
+  recorder.ondataavailable = (ev) => ev.data.size && chunks.push(ev.data);
+  recorder.onstop = () => {
+    const blob = new Blob(chunks, { type: recorder.mimeType });
+    const secs = ((performance.now() - recStart) / 1000).toFixed(1);
+    $("recOut").textContent = `${secs}s · ${recorder.mimeType} · ${(blob.size / 1024).toFixed(1)} KB`;
+    $("player").src = URL.createObjectURL(blob);
+    $("player").hidden = false;
+    stream.getTracks().forEach((t) => t.stop());
+    recorder = null;
+    log("rec stop");
+    sendToServer(blob);
+  };
+  recorder.start();
+  recStart = performance.now();
+  $("recBtn").textContent = "Recording… release to stop";
+  $("recBtn").classList.add("active");
+  log("rec start");
+}
+function stopRec(e) {
+  e.preventDefault();
+  $("recBtn").textContent = "Hold to record";
+  $("recBtn").classList.remove("active");
+  if (recorder && recorder.state === "recording") recorder.stop();
+}
+async function sendToServer(blob) {
+  $("serverOut").textContent = "Sending…";
+  const form = new FormData();
+  form.append("audio", blob, "audio");
+  try {
+    const res = await fetch("api/voice", { method: "POST", body: form });
+    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+    const { results } = await res.json();
+    $("serverOut").textContent = results.map((r) => {
+      if (r.error) return `── ${r.engine}\nError: ${r.error}`;
+      const lines = r.entries.map((e) =>
+        `${e.kind === "income" ? "+" : "-"}${e.amount.toLocaleString("es-AR")} ${e.currency} · ${e.category ?? "¿categoría?"}` +
+        `${e.merchant ? " · " + e.merchant : ""} · ${e.payment_method ?? "¿medio de pago?"} · ${e.date}\n  ${e.note}`);
+      return `── ${r.engine}\n"${r.transcript}"\n${lines.join("\n") || "(no entries)"}\n` +
+        `transcribe ${r.timings_ms.transcribe} ms · parse ${r.timings_ms.parse} ms`;
+    }).join("\n\n");
+  } catch (err) {
+    $("serverOut").textContent = `Server error: ${err.message}`;
+  }
+}
+
+$("recBtn").addEventListener("pointerdown", startRec);
+$("recBtn").addEventListener("pointerup", stopRec);
+$("recBtn").addEventListener("pointercancel", stopRec);
+$("recBtn").addEventListener("contextmenu", (e) => e.preventDefault());
+</script>
+</body>
+</html>
