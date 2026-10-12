@@ -132,6 +132,12 @@ func (s *Store) RecordingProcessed(ctx context.Context, id string) (bool, error)
 	return processedAt != nil, err
 }
 
+func (s *Store) AudioPath(ctx context.Context, recordingID string) (string, error) {
+	var path string
+	err := s.db.QueryRowContext(ctx, `SELECT audio_path FROM recordings WHERE id = ?`, recordingID).Scan(&path)
+	return path, err
+}
+
 func (s *Store) SaveRecording(ctx context.Context, id, recordedAt, audioPath string) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO recordings (id, recorded_at, audio_path) VALUES (?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET audio_path = excluded.audio_path, error = NULL`, id, recordedAt, audioPath)

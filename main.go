@@ -59,6 +59,7 @@ func main() {
 	mux.HandleFunc("PUT /api/entries/{id}", app.putEntry)
 	mux.HandleFunc("DELETE /api/entries/{id}", app.deleteEntry)
 	mux.HandleFunc("POST /api/recordings", app.postRecording)
+	mux.HandleFunc("GET /api/recordings/{id}/audio", app.getAudio)
 	mux.Handle("GET /", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// The service worker owns offline caching; the browser must always revalidate.
 		w.Header().Set("Cache-Control", "no-cache")
@@ -167,6 +168,10 @@ func (a *App) postRecording(w http.ResponseWriter, r *http.Request) {
 
 	recordedLocal := recordedAt.In(a.tz)
 	transcript, err := a.ai.Transcribe(ctx, audio, "audio."+ext, a.cfg.Terms())
+	// With no intelligible speech the transcriber echoes its prompt back instead of returning "".
+	if strings.Contains(transcript, transcribeContext[:40]) || strings.Contains(transcript, "Nombres frecuentes:") {
+		transcript = ""
+	}
 	var parsed []ParsedEntry
 	if err == nil && strings.TrimSpace(transcript) != "" {
 		parsed, err = a.ai.Parse(ctx, a.cfg, transcript, recordedLocal)
@@ -183,10 +188,26 @@ func (a *App) postRecording(w http.ResponseWriter, r *http.Request) {
 	a.writeRecording(w, r, id, err)
 }
 
+func (a *App) getAudio(w http.ResponseWriter, r *http.Request) {
+	path, err := a.store.AudioPath(r.Context(), r.PathValue("id"))
+	if err != nil {
+		httpError(w, http.StatusNotFound, err)
+		return
+	}
+	if strings.HasSuffix(path, ".m4a") {
+		w.Header().Set("Content-Type", "audio/mp4")
+	}
+	http.ServeFile(w, r, path)
+}
+
 // toEntries keeps an unparseable recording as one blank entry holding the transcript, so it is never lost.
 func (a *App) toEntries(recordingID, transcript string, recordedAt time.Time, parsed []ParsedEntry) []Entry {
 	if len(parsed) == 0 {
-		parsed = []ParsedEntry{{Currency: "ARS", Note: transcript}}
+		note := transcript
+		if strings.TrimSpace(note) == "" {
+			note = "No se entendió el audio"
+		}
+		parsed = []ParsedEntry{{Currency: "ARS", Note: note}}
 	}
 	parsed = parsed[:min(len(parsed), 15)]
 	entries := make([]Entry, len(parsed))

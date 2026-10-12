@@ -334,6 +334,9 @@ function openSheet(entry) {
   $("fNote").value = editing.note ?? "";
   $("fDate").value = editing.date;
   $("transcript").textContent = editing.transcript ? `“${editing.transcript}”` : "";
+  // Streams from the server, so it only plays online.
+  $("fAudio").hidden = !editing.recording_id;
+  $("fAudio").src = editing.recording_id ? `api/recordings/${editing.recording_id}/audio` : "";
   $("fDelete").hidden = !entry;
   $("fDelete").textContent = "Borrar";
   $("sheet").showModal();
@@ -353,6 +356,7 @@ $("form").addEventListener("submit", (ev) => {
   });
 });
 $("fCancel").addEventListener("click", () => $("sheet").close());
+$("sheet").addEventListener("close", () => $("fAudio").pause());
 $("fDelete").addEventListener("click", () => {
   if ($("fDelete").textContent !== "¿Seguro?") { $("fDelete").textContent = "¿Seguro?"; return; }
   $("sheet").close();
