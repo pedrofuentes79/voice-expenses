@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gastos">
+<meta name="theme-color" content="#0b0b0f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.png">
+<title>Gastos</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f4f4f7; --surface: #fff; --fg: #111; --muted: #6b6b75; --line: #e4e4ea;
+    --accent: #0a7cff; --rec: #e0352b; --review: #f5a623; --ok: #2fb35b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0b0b0f; --surface: #1a1a20; --fg: #f2f2f5; --muted: #8e8e99; --line: #2a2a33; }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.35 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+  body { padding: env(safe-area-inset-top) 16px calc(env(safe-area-inset-bottom) + 24px); }
+  button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
+
+  header { display: flex; align-items: center; justify-content: space-between; padding: 12px 0 4px; }
+  h1 { font-size: 20px; margin: 0; }
+  #status { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  #status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+  #status.offline .dot { background: var(--muted); }
+  #status.syncing .dot { background: var(--accent); }
+
+  #capture { display: flex; flex-direction: column; align-items: center; padding: 20px 0 16px; gap: 10px; }
+  #rec { width: 112px; height: 112px; border-radius: 50%; background: var(--accent); color: #fff;
+    display: grid; place-items: center; box-shadow: 0 6px 20px rgb(10 124 255 / .35); touch-action: manipulation;
+    -webkit-user-select: none; user-select: none; }
+  #rec svg { width: 44px; height: 44px; }
+  #rec.recording { background: var(--rec); box-shadow: 0 0 0 10px rgb(224 53 43 / .2); }
+  #recHint { font-size: 14px; color: var(--muted); min-height: 1.4em; }
+  #add { font-size: 14px; color: var(--accent); padding: 4px 8px; }
+
+  .day { margin-top: 18px; }
+  .day h2 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .03em;
+    margin: 0 4px 6px; }
+  .list { background: var(--surface); border-radius: 14px; overflow: hidden; }
+  .row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-top: 1px solid var(--line);
+    width: 100%; text-align: left; }
+  .row:first-child { border-top: 0; }
+  .row .main { flex: 1; min-width: 0; }
+  .row .title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .sub { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .amount { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+  .row.review { box-shadow: inset 3px 0 0 var(--review); }
+  .chip { font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 6px; background: var(--review);
+    color: #000; margin-left: 6px; vertical-align: 1px; }
+  .confirm { width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid var(--ok); color: var(--ok);
+    font-size: 17px; flex: none; }
+  .pending .title { color: var(--muted); }
+  .pending .err { color: var(--rec); }
+  .discard { color: var(--rec); font-size: 14px; padding: 6px; flex: none; }
+  #empty { text-align: center; color: var(--muted); margin-top: 40px; font-size: 15px; }
+
+  dialog { border: 0; padding: 0; width: 100%; max-width: 520px; margin: auto auto 0; border-radius: 18px 18px 0 0;
+    background: var(--surface); color: var(--fg); }
+  dialog::backdrop { background: rgb(0 0 0 / .4); }
+  dialog form { padding: 16px 16px calc(env(safe-area-inset-bottom) + 16px); display: grid; gap: 12px; }
+  .amount-row { display: flex; gap: 8px; }
+  .amount-row input { flex: 1; font-size: 28px; font-weight: 600; }
+  label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  input, select { font: inherit; font-size: 16px; color: var(--fg); background: var(--bg); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px; width: 100%; min-width: 0; }
+  .seg { display: flex; background: var(--bg); border-radius: 10px; padding: 3px; border: 1px solid var(--line); }
+  .seg button { padding: 8px 12px; border-radius: 8px; font-weight: 600; color: var(--muted); }
+  .seg button.on { background: var(--surface); color: var(--fg); box-shadow: 0 1px 3px rgb(0 0 0 / .15); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  #transcript { font-size: 13px; color: var(--muted); font-style: italic; }
+  .actions { display: flex; gap: 8px; }
+  .actions button { flex: 1; padding: 13px; border-radius: 12px; font-weight: 600; }
+  .primary { background: var(--accent); color: #fff; }
+  .danger { color: var(--rec); background: var(--bg); }
+  .plain { background: var(--bg); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Gastos</h1>
+  <div id="status"><span class="dot"></span><span id="statusText"></span></div>
+</header>
+
+<section id="capture">
+  <button id="rec" aria-label="Grabar">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 1 0-7 0v6A3.5 3.5 0 0 0 12 15Zm6-3.5a.75.75 0 0 0-1.5 0 4.5 4.5 0 0 1-9 0 .75.75 0 0 0-1.5 0 6 6 0 0 0 5.25 5.95V20h-2.5a.75.75 0 0 0 0 1.5h6.5a.75.75 0 0 0 0-1.5h-2.5v-2.55A6 6 0 0 0 18 11.5Z"/></svg>
+  </button>
+  <div id="recHint">Tocá para grabar</div>
+  <button id="add">+ Cargar a mano</button>
+</section>
+
+<main id="list"></main>
+<div id="empty" hidden>Todavía no hay gastos.</div>
+
+<dialog id="sheet">
+  <form method="dialog" id="form">
+    <div class="amount-row">
+      <input id="fAmount" inputmode="decimal" placeholder="0" autocomplete="off">
+      <div class="seg" id="fCurrency"></div>
+    </div>
+    <div class="two">
+      <label>Categoría<select id="fCategory"></select></label>
+      <label>Medio de pago<select id="fPayment"></select></label>
+    </div>
+    <label>Lugar<input id="fMerchant" autocomplete="off"></label>
+    <label>Nota<input id="fNote" autocomplete="off"></label>
+    <label>Fecha<input id="fDate" type="date"></label>
+    <div id="transcript"></div>
+    <div class="actions">
+      <button type="button" class="danger" id="fDelete">Borrar</button>
+      <button type="button" class="plain" id="fCancel">Cancelar</button>
+      <button type="submit" class="primary" id="fSave">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>
