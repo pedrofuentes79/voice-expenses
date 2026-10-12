@@ -203,11 +203,7 @@ func (a *App) getAudio(w http.ResponseWriter, r *http.Request) {
 // toEntries keeps an unparseable recording as one blank entry holding the transcript, so it is never lost.
 func (a *App) toEntries(recordingID, transcript string, recordedAt time.Time, parsed []ParsedEntry) []Entry {
 	if len(parsed) == 0 {
-		note := transcript
-		if strings.TrimSpace(note) == "" {
-			note = "No se entendió el audio"
-		}
-		parsed = []ParsedEntry{{Currency: "ARS", Note: note}}
+		parsed = []ParsedEntry{{Currency: "ARS", Note: strings.TrimSpace(transcript)}}
 	}
 	parsed = parsed[:min(len(parsed), 15)]
 	entries := make([]Entry, len(parsed))
