@@ -13,6 +13,8 @@ import (
 )
 
 const (
+	// "minimal" misread "50 lucas" as 50 and dropped amounts in ~1 of 8 parses; "low" got 40/40.
+	reasoningEffort = "low"
 	transcribeModel = "gpt-4o-mini-transcribe"
 	parseModel      = "gpt-5-nano"
 	// Context, not vocabulary: tells the transcriber what kind of speech to expect.
@@ -129,7 +131,7 @@ func (o *OpenAI) Parse(ctx context.Context, cfg *Config, transcript string, reco
 		"model":        parseModel,
 		"instructions": cfg.Instructions(),
 		"input":        fmt.Sprintf("Hoy es %s %s.\n\nTranscripción: %s", weekdays[recordedAt.Weekday()], recordedAt.Format("2006-01-02"), transcript),
-		"reasoning":    map[string]any{"effort": "minimal"},
+		"reasoning":    map[string]any{"effort": reasoningEffort},
 		"text": map[string]any{"format": map[string]any{
 			"type": "json_schema", "name": "entries", "strict": true, "schema": entriesSchema(cfg),
 		}},

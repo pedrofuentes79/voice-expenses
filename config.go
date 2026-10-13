@@ -61,7 +61,7 @@ func (c *Config) Instructions() string {
 	var b strings.Builder
 	b.WriteString(`Convertí la transcripción de un mensaje de voz en gastos.
 
-- Un mensaje puede tener varios gastos; devolvé uno por cada gasto.
+- Un mensaje puede tener varios gastos: cada monto mencionado es un gasto distinto, no omitas ninguno.
 - Si no hay ningún monto, devolvé una lista vacía.
 - Montos en jerga argentina: "lucas"/"luquitas" = miles, "palo" = millón, "k" = miles, "mangos"/"pesos" = ARS. "70 lucas" = 70000.
 - Moneda ARS salvo que diga dólares/USD/verdes.
@@ -75,18 +75,20 @@ func (c *Config) Instructions() string {
 		}
 	}
 	fmt.Fprintf(&b, `- Si ninguna categoría encaja con claridad, category = null y el usuario la elige.
-- Medios de pago: %s. "efectivo" = Cash. La transcripción puede deformar el nombre: elegí el más parecido. null si no se menciona.
+- Medios de pago: %s. "efectivo" = Cash. La transcripción puede deformar el nombre: elegí el más parecido. Si el mensaje no dice cómo se pagó, payment_method = null: no lo deduzcas.
 - La transcripción puede tener errores en nombres propios: copiá el nombre del comercio tal cual se transcribió, no lo inventes ni lo corrijas.
 - "merchant": el comercio o lugar donde se gastó, nunca una persona. null si no se menciona.
 - "note": descripción corta en español. Si el gasto fue con alguien, nombralo; no repitas el monto ni el medio de pago.
 - Fecha: hoy salvo que diga "ayer", un día de la semana, etc. Formato YYYY-MM-DD.
 `, strings.Join(c.PaymentMethods, ", "))
 	if len(c.Examples) > 0 {
-		b.WriteString("\nGastos que el usuario ya cargó, para que imites cómo categoriza:\n")
+		b.WriteString("\nGastos que el usuario ya cargó (nota, monto → categoría), para que imites cómo categoriza:\n")
 		for _, e := range c.Examples {
-			if e.Kind == "expense" {
-				fmt.Fprintf(&b, "- %q → %s, %s, %g %s\n", e.Note, e.Category, e.PaymentMethod, e.Amount, e.Currency)
+			if e.Kind != "expense" {
+				continue
 			}
+			// No payment method here: with one in every example the model invented one when none was said.
+			fmt.Fprintf(&b, "- %q, %g %s → %s\n", e.Note, e.Amount, e.Currency, e.Category)
 		}
 	}
 	return b.String()

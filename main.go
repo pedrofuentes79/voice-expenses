@@ -101,6 +101,10 @@ func (a *App) putEntry(w http.ResponseWriter, r *http.Request) {
 	if e.Status != "review" {
 		e.Status = "ok"
 	}
+	// Only applies on creation: an edit never changes where an entry came from.
+	if e.Source != "import" {
+		e.Source = "manual"
+	}
 	a.sanitize(&e.Currency, &e.Category, &e.PaymentMethod, &e.Amount)
 	if err := a.store.PutEntry(r.Context(), e); err != nil {
 		httpError(w, http.StatusInternalServerError, err)

@@ -175,14 +175,14 @@ func (s *Store) FinishRecording(ctx context.Context, id, transcript string, entr
 func (s *Store) PutEntry(ctx context.Context, e Entry) error {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO entries (id, status, amount, currency, category, merchant,
 		payment_method, note, date, source, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual', ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET status = excluded.status, amount = excluded.amount,
 			currency = excluded.currency, category = excluded.category, merchant = excluded.merchant,
 			payment_method = excluded.payment_method, note = excluded.note, date = excluded.date,
 			updated_at = excluded.updated_at, deleted = 0
 		WHERE excluded.updated_at >= entries.updated_at`,
 		e.ID, e.Status, e.Amount, e.Currency, e.Category, e.Merchant, e.PaymentMethod, e.Note, e.Date,
-		e.UpdatedAt, e.UpdatedAt)
+		e.Source, e.UpdatedAt, e.UpdatedAt)
 	return err
 }
 
