@@ -6,3 +6,6 @@ terms.txt
 config.json
 *.log
 .ruff_cache/
+/voice-expenses
+/voice-expenses.new
+/.deployed-commit

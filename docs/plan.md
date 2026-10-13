@@ -2,7 +2,7 @@
 
 ## Where it stands
 
-- Go server on the Pi (systemd, `tailscale serve`, ~12 MB RSS): SQLite, OpenAI transcription
+- Go server on the Pi (systemd behind the existing reverse proxy, tailnet/LAN only, ~12 MB RSS): SQLite, OpenAI transcription
   (`gpt-4o-mini-transcribe`) and parsing (`gpt-5-nano`, strict JSON schema).
 - iPhone PWA: tap to record, list by day, review/edit sheet, manual entry, audio playback.
 - Offline-first: service-worker shell, IndexedDB mirror, outbox with idempotent recordings.
