@@ -8,8 +8,8 @@ the app's own through a JSON file (kept out of the repo: it names your categorie
       "payment_methods": {"Cash": "Cash", ...}
     }
 
-Category keys are "Parent/Sub" or "Parent"; a transaction whose category isn't mapped is
-skipped. An unmapped payment method is imported as null. Entry ids are derived from the backup's
+Category keys are "Parent/Sub" or "Parent". A transaction whose category isn't mapped goes to
+"default_category" (if set) with the original category prefixed to its note, else is skipped. An unmapped payment method is imported as null. Entry ids are derived from the backup's
 row ids, so re-running the import updates instead of duplicating.
 
     python3 -I tools/import_moneymanager.py BACKUP.mmbak MAPPING.json --url https://host [--dry-run]
@@ -41,15 +41,19 @@ ORDER BY t.ZTXDATESTR
 """
 
 
-def load(backup: str, mapping: dict) -> tuple[list[dict], Counter]:
+def load(backup: str, mapping: dict) -> tuple[list[dict], Counter, Counter]:
     db = sqlite3.connect(f"file:{backup}?mode=ro", uri=True)
     today = date.today().isoformat()
-    entries, skipped = [], Counter()
+    entries, skipped, fallbacks = [], Counter(), Counter()
     for uid, day, amount, amount_sub, currency_uid, content, memo, cat, parent, asset in db.execute(QUERY):
         key = f"{parent}/{cat}" if parent else cat
-        if (category := mapping["categories"].get(key)) is None:
-            skipped[f"category {key}"] += 1
-            continue
+        category = mapping["categories"].get(key)
+        fallback = category is None
+        if fallback:
+            if (category := mapping.get("default_category")) is None:
+                skipped[f"category {key}"] += 1
+                continue
+            fallbacks[key] += 1
         if (currency := CURRENCIES.get(currency_uid)) is None:
             skipped[f"currency {currency_uid}"] += 1
             continue
@@ -62,6 +66,9 @@ def load(backup: str, mapping: dict) -> tuple[list[dict], Counter]:
             skipped["non-positive amount"] += 1
             continue
         note = " — ".join(s.strip() for s in (content, memo) if s and s.strip())
+        if fallback:
+            # Keep the original category visible, so these can be recategorized later.
+            note = f"{key}: {note}" if note else key
         entries.append({
             "id": str(uuid.uuid5(NAMESPACE, uid)),
             "status": "ok",
@@ -74,7 +81,7 @@ def load(backup: str, mapping: dict) -> tuple[list[dict], Counter]:
             "note": note,
             "date": day,
         })
-    return entries, skipped
+    return entries, skipped, fallbacks
 
 
 def upload(entries: list[dict], url: str) -> None:
@@ -125,8 +132,10 @@ def main() -> None:
 
     with open(args.mapping) as f:
         mapping = json.load(f)
-    entries, skipped = load(args.backup, mapping)
+    entries, skipped, fallbacks = load(args.backup, mapping)
     print(f"{len(entries)} to import; skipped: {dict(skipped) or 'none'}")
+    if fallbacks:
+        print(f"to {mapping['default_category']}: {dict(fallbacks)}")
     print("by category:", dict(Counter(e["category"] for e in entries).most_common()))
     print("by payment method:", dict(Counter(e["payment_method"] for e in entries).most_common()))
     if args.examples and not args.dry_run:
