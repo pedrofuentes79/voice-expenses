@@ -22,26 +22,42 @@
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; background: var(--bg); color: var(--fg);
     font: 16px/1.35 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
-  body { padding: env(safe-area-inset-top) 16px calc(env(safe-area-inset-bottom) + 24px); }
+  body { padding: 0 16px; }
   button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; }
 
-  header { display: flex; align-items: center; justify-content: space-between; padding: 12px 0 4px; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 10px 0 2px; }
   h1 { font-size: 20px; margin: 0; }
   #status { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
   #status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
   #status.offline .dot { background: var(--muted); }
   #status.syncing .dot { background: var(--accent); }
 
-  #capture { display: flex; flex-direction: column; align-items: center; padding: 20px 0 16px; gap: 10px; }
-  #rec { width: 112px; height: 112px; border-radius: 50%; background: var(--accent); color: #fff;
+  body { padding-bottom: calc(env(safe-area-inset-bottom) + 130px); }
+  #top { position: sticky; top: 0; z-index: 2; margin: 0 -16px; padding: env(safe-area-inset-top) 16px 0;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+  #monthbar { display: flex; align-items: center; gap: 4px; margin: 0 -8px; padding: 0 0 6px; }
+  #prevMonth, #nextMonth { font-size: 26px; width: 44px; height: 44px; color: var(--accent); flex: none; }
+  #monthTitle { flex: 1; display: grid; justify-items: center; gap: 1px; padding: 2px 0; }
+  #monthName { font-size: 17px; font-weight: 600; }
+  #monthTotal { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  #dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 3; display: grid; justify-items: center; gap: 6px;
+    padding: 8px 16px calc(env(safe-area-inset-bottom) + 12px); pointer-events: none; }
+  #dock > * { pointer-events: auto; }
+  .dock-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; width: 100%; max-width: 420px; }
+  .dock-side { display: flex; justify-content: center; }
+  #recHint:empty { display: none; }
+  #recHint { background: var(--surface); padding: 6px 12px; border-radius: 999px; box-shadow: 0 2px 10px rgb(0 0 0 / .15); }
+  #add { width: 52px; height: 52px; border-radius: 50%; background: var(--surface); color: var(--accent); font-size: 30px;
+    line-height: 1; box-shadow: 0 3px 12px rgb(0 0 0 / .18); }
+  #rec { width: 76px; height: 76px; border-radius: 50%; background: var(--accent); color: #fff;
     display: grid; place-items: center; box-shadow: 0 6px 20px rgb(10 124 255 / .35); touch-action: manipulation;
     -webkit-user-select: none; user-select: none; }
-  #rec svg { width: 44px; height: 44px; }
+  #rec svg { width: 34px; height: 34px; }
   #rec.recording { background: var(--rec); box-shadow: 0 0 0 10px rgb(224 53 43 / .2); }
   #recHint { font-size: 14px; color: var(--muted); min-height: 1.4em; }
-  #add { font-size: 14px; color: var(--accent); padding: 4px 8px; }
 
-  .day { margin-top: 18px; }
+  .day { margin-top: 14px; }
   .day h2 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .03em;
     margin: 0 4px 6px; }
   .list { background: var(--surface); border-radius: 14px; overflow: hidden; }
@@ -60,14 +76,29 @@
   .pending .title { color: var(--muted); }
   .pending .err { color: var(--rec); }
   .discard { color: var(--rec); font-size: 14px; padding: 6px; flex: none; }
-  #empty { text-align: center; color: var(--muted); margin-top: 40px; font-size: 15px; }
+  #empty { text-align: center; color: var(--muted); margin-top: 48px; font-size: 15px; }
+  #list { touch-action: pan-y; }
 
   dialog { border: 0; padding: 0; width: 100%; max-width: 520px; margin: auto auto 0; border-radius: 18px 18px 0 0;
     background: var(--surface); color: var(--fg); }
   dialog::backdrop { background: rgb(0 0 0 / .4); }
   dialog form { padding: 16px 16px calc(env(safe-area-inset-bottom) + 16px); display: grid; gap: 12px; }
   .amount-row { display: flex; gap: 8px; }
-  .amount-row input { flex: 1; font-size: 28px; font-weight: 600; }
+  #fAmount { flex: 1; min-width: 0; display: grid; justify-items: start; text-align: left; padding: 6px 10px;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+  #fAmount.active { border-color: var(--accent); }
+  #fAmount.invalid #fValue { color: var(--rec); }
+  #fExpr { font-size: 14px; color: var(--muted); min-height: 1.2em; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; max-width: 100%; font-variant-numeric: tabular-nums; }
+  #fValue { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  #keypad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  #keypad[hidden] { display: none; }
+  #keypad button { height: 48px; border-radius: 10px; background: var(--bg); font-size: 21px; font-weight: 500;
+    touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+  #keypad button:active { filter: brightness(.85); }
+  #keypad .op { color: var(--accent); font-size: 24px; }
+  #keypad .fn { color: var(--muted); }
+  #keypad .ok { background: var(--accent); color: #fff; font-size: 17px; font-weight: 600; }
   label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
   input, select { font: inherit; font-size: 16px; color: var(--fg); background: var(--bg); border: 1px solid var(--line);
     border-radius: 10px; padding: 10px; width: 100%; min-width: 0; }
@@ -85,27 +116,52 @@
 </style>
 </head>
 <body>
+<div id="top">
 <header>
   <h1>Gastos</h1>
   <div id="status"><span class="dot"></span><span id="statusText"></span></div>
 </header>
 
-<section id="capture">
-  <button id="rec" aria-label="Grabar">
-    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 1 0-7 0v6A3.5 3.5 0 0 0 12 15Zm6-3.5a.75.75 0 0 0-1.5 0 4.5 4.5 0 0 1-9 0 .75.75 0 0 0-1.5 0 6 6 0 0 0 5.25 5.95V20h-2.5a.75.75 0 0 0 0 1.5h6.5a.75.75 0 0 0 0-1.5h-2.5v-2.55A6 6 0 0 0 18 11.5Z"/></svg>
-  </button>
-  <div id="recHint">Tocá para grabar</div>
-  <button id="add">+ Cargar a mano</button>
-</section>
+<nav id="monthbar">
+  <button id="prevMonth" aria-label="Mes anterior">‹</button>
+  <button id="monthTitle"><span id="monthName"></span><span id="monthTotal"></span></button>
+  <button id="nextMonth" aria-label="Mes siguiente">›</button>
+</nav>
+</div>
 
 <main id="list"></main>
-<div id="empty" hidden>Todavía no hay gastos.</div>
+<div id="empty" hidden></div>
+
+<section id="dock">
+  <div id="recHint"></div>
+  <div class="dock-row">
+    <span class="dock-side"></span>
+    <button id="rec" aria-label="Grabar">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 1 0-7 0v6A3.5 3.5 0 0 0 12 15Zm6-3.5a.75.75 0 0 0-1.5 0 4.5 4.5 0 0 1-9 0 .75.75 0 0 0-1.5 0 6 6 0 0 0 5.25 5.95V20h-2.5a.75.75 0 0 0 0 1.5h6.5a.75.75 0 0 0 0-1.5h-2.5v-2.55A6 6 0 0 0 18 11.5Z"/></svg>
+    </button>
+    <span class="dock-side"><button id="add" aria-label="Cargar a mano">+</button></span>
+  </div>
+</section>
 
 <dialog id="sheet">
   <form method="dialog" id="form">
     <div class="amount-row">
-      <input id="fAmount" inputmode="decimal" placeholder="0" autocomplete="off">
+      <button type="button" id="fAmount"><span id="fExpr"></span><span id="fValue"></span></button>
       <div class="seg" id="fCurrency"></div>
+    </div>
+    <div id="keypad" hidden>
+      <button type="button" data-k="C" class="fn">C</button>
+      <button type="button" data-k="÷" class="op">÷</button>
+      <button type="button" data-k="×" class="op">×</button>
+      <button type="button" data-k="⌫" class="fn">⌫</button>
+      <button type="button" data-k="7">7</button><button type="button" data-k="8">8</button>
+      <button type="button" data-k="9">9</button><button type="button" data-k="−" class="op">−</button>
+      <button type="button" data-k="4">4</button><button type="button" data-k="5">5</button>
+      <button type="button" data-k="6">6</button><button type="button" data-k="+" class="op">+</button>
+      <button type="button" data-k="1">1</button><button type="button" data-k="2">2</button>
+      <button type="button" data-k="3">3</button><button type="button" data-k="=" class="op">=</button>
+      <button type="button" data-k="000">000</button><button type="button" data-k="0">0</button>
+      <button type="button" data-k=",">,</button><button type="button" data-k="OK" class="ok">OK</button>
     </div>
     <div class="two">
       <label>Categoría<select id="fCategory"></select></label>

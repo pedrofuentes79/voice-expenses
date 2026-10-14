@@ -1,5 +1,5 @@
 // Serves the app shell from cache so it opens offline; /api/ always goes to the network.
-const CACHE = "gastos-v2";
+const CACHE = "gastos-v3";
 const SHELL = ["./", "app.js", "manifest.webmanifest", "icon.png"];
 
 self.addEventListener("install", (event) => {

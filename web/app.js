@@ -39,7 +39,8 @@ const idb = {
 
 // ---------- State ----------
 
-const state = { entries: [], outbox: [], config: null, online: navigator.onLine, syncing: false, shown: 150 };
+const state = { entries: [], outbox: [], config: null, online: navigator.onLine, syncing: false,
+  month: new Date().toLocaleDateString("sv-SE").slice(0, 7) };
 
 async function reload() {
   [state.entries, state.outbox, state.config] = await Promise.all([
@@ -183,7 +184,7 @@ async function finishRecording() {
   recorder = null;
   $("rec").classList.remove("recording");
   const seconds = (Date.now() - startedAt) / 1000;
-  if (seconds < 1) { hint("Muy corto, mantené un poco más"); return; }
+  if (seconds < 1) { hint("Muy corto"); setTimeout(() => hint(""), 2000); return; }
   const blob = new Blob(chunks, { type: mime });
   // Stored as an ArrayBuffer: Blobs in IndexedDB have been unreliable on iOS.
   await enqueue({
@@ -193,7 +194,7 @@ async function finishRecording() {
   hint(state.online ? "Procesando…" : "Guardado. Se procesa cuando vuelva la conexión.");
   await reload();
   await sync();
-  hint("Tocá para grabar");
+  setTimeout(() => hint(""), state.online ? 0 : 3000);
 }
 
 // ---------- Rendering ----------
@@ -250,7 +251,8 @@ function pendingRow(op) {
 function entryRow(e) {
   const review = e.status === "review";
   const title = e.merchant || e.note || e.category || "Sin descripción";
-  const sub = [e.category ?? "Sin categoría", e.payment_method, e.merchant && e.note].filter(Boolean).join(" · ");
+  const category = title === e.category ? null : (e.category ?? "Sin categoría");
+  const sub = [category, e.payment_method, e.merchant && e.note].filter(Boolean).join(" · ");
   return el("div", { class: `row${review ? " review" : ""}`, onclick: () => openSheet(e) },
     el("div", { class: "main" },
       el("div", { class: "title" }, title, review && el("span", { class: "chip", textContent: "Revisar" })),
@@ -258,6 +260,25 @@ function entryRow(e) {
     el("div", { class: "amount", textContent: fmtAmount(e) }),
     review && e.amount != null && el("button", { class: "confirm", textContent: "✓", "aria-label": "Confirmar",
       onclick: (ev) => { ev.stopPropagation(); saveEntry({ ...e, status: "ok" }); } }));
+}
+
+const monthLabel = (month) => {
+  const d = new Date(`${month}-15T12:00:00`);
+  const name = d.toLocaleDateString("es-AR", { month: "long" });
+  const label = name[0].toUpperCase() + name.slice(1);
+  return d.getFullYear() === new Date().getFullYear() ? label : `${label} ${d.getFullYear()}`;
+};
+
+function shiftMonth(month, delta) {
+  const [y, m] = month.split("-").map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function goToMonth(month) {
+  state.month = month;
+  render();
+  window.scrollTo({ top: 0 });
 }
 
 function render() {
@@ -269,10 +290,10 @@ function render() {
     list.append(el("section", { class: "day" }, el("h2", { textContent: "Sin procesar" }),
       el("div", { class: "list" }, ...recordings.map(pendingRow))));
   }
-  const entries = [...state.entries].sort((a, b) =>
+  const entries = state.entries.filter((e) => e.date.startsWith(state.month)).sort((a, b) =>
     b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at));
   let day = null, group = null;
-  for (const e of entries.slice(0, state.shown)) {
+  for (const e of entries) {
     if (e.date !== day) {
       day = e.date;
       group = el("div", { class: "list" });
@@ -280,26 +301,118 @@ function render() {
     }
     group.append(entryRow(e));
   }
-  if (entries.length > state.shown) {
-    list.append(el("button", { id: "more", textContent: "Mostrar más", style: "width:100%;padding:16px;color:var(--accent)",
-      onclick: () => { state.shown += 150; render(); } }));
-  }
+
+  const totals = {};
+  for (const e of entries) if (e.amount != null) totals[e.currency] = (totals[e.currency] ?? 0) + e.amount;
+  $("monthName").textContent = monthLabel(state.month);
+  $("monthTotal").textContent = Object.keys(totals).length
+    ? ["ARS", "USD"].filter((c) => totals[c]).map((c) => fmtAmount({ amount: totals[c], currency: c })).join(" · ")
+    : "Sin gastos";
+  $("nextMonth").disabled = state.month >= localDate().slice(0, 7);
+  $("nextMonth").style.visibility = $("nextMonth").disabled ? "hidden" : "";
   $("empty").hidden = entries.length > 0 || recordings.length > 0;
+  $("empty").textContent = `No hay gastos en ${monthLabel(state.month).toLowerCase()}.`;
 }
+
+$("prevMonth").addEventListener("click", () => goToMonth(shiftMonth(state.month, -1)));
+$("nextMonth").addEventListener("click", () => goToMonth(shiftMonth(state.month, 1)));
+$("monthTitle").addEventListener("click", () => goToMonth(localDate().slice(0, 7)));
+
+// Horizontal swipe on the list changes month; vertical scrolling is left alone.
+let touchStart = null;
+$("list").addEventListener("touchstart", (e) => {
+  touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+}, { passive: true });
+$("list").addEventListener("touchend", (e) => {
+  if (!touchStart) return;
+  const dx = e.changedTouches[0].clientX - touchStart.x;
+  const dy = e.changedTouches[0].clientY - touchStart.y;
+  touchStart = null;
+  if (Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6) return;
+  const next = shiftMonth(state.month, dx < 0 ? 1 : -1);
+  if (next <= localDate().slice(0, 7)) goToMonth(next);
+}, { passive: true });
 
 // ---------- Edit sheet ----------
 
 let editing = null;
 
-function parseAmount(text) {
-  let s = text.replace(/[^\d.,]/g, "");
-  if (!s) return null;
-  // es-AR: "." groups thousands, "," is the decimal separator.
-  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
-  else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, "");
-  const n = Number(s);
-  return Number.isFinite(n) && n > 0 ? n : null;
+// ---------- Amount calculator ----------
+// The expression is kept raw: digits, "," as the decimal separator, and the operators + − × ÷.
+
+const OPS = "+−×÷";
+let expr = "";
+
+const currentNumber = () => expr.split(/[+−×÷]/).pop();
+
+function evaluate(text) {
+  const tokens = text.match(/\d+(?:,\d*)?|[+−×÷]/g) ?? [];
+  if (tokens.length && OPS.includes(tokens.at(-1))) tokens.pop();
+  if (!tokens.length) return null;
+  // Two passes for precedence: × ÷ first, then + −.
+  const terms = [Number(tokens[0].replace(",", "."))];
+  const signs = [];
+  for (let i = 1; i < tokens.length; i += 2) {
+    const op = tokens[i], n = Number(tokens[i + 1].replace(",", "."));
+    if (op === "×") terms.push(terms.pop() * n);
+    else if (op === "÷") terms.push(n === 0 ? NaN : terms.pop() / n);
+    else { signs.push(op); terms.push(n); }
+  }
+  let total = terms[0];
+  signs.forEach((op, i) => { total = op === "+" ? total + terms[i + 1] : total - terms[i + 1]; });
+  return Number.isFinite(total) ? Math.round(total * 100) / 100 : null;
 }
+
+const toRaw = (n) => String(n).replace(".", ",");
+
+function fmtRawNumber(raw) {
+  const [int, dec] = raw.split(",");
+  const grouped = int.replace(/^0+(?=\d)/, "").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return dec === undefined ? grouped : `${grouped},${dec}`;
+}
+
+function renderAmount() {
+  const symbol = editing.currency === "USD" ? "US$" : "$";
+  const hasOp = /[+−×÷]/.test(expr);
+  const value = evaluate(expr);
+  $("fExpr").textContent = hasOp ? expr.replace(/\d+(?:,\d*)?/g, fmtRawNumber).replace(/([+−×÷])/g, " $1 ") : "";
+  $("fValue").textContent = hasOp
+    ? `= ${value == null ? "—" : `${symbol} ${fmtNumber(value)}`}`
+    : `${symbol} ${expr ? fmtRawNumber(expr) : "0"}`;
+  $("fAmount").classList.toggle("invalid", hasOp && (value == null || value <= 0));
+}
+
+function showKeypad(show) {
+  $("keypad").hidden = !show;
+  $("fAmount").classList.toggle("active", show);
+  if (show) document.activeElement?.blur();
+}
+
+function pressKey(k) {
+  const num = currentNumber();
+  if (/^\d$/.test(k)) expr = num === "0" ? expr.slice(0, -1) + k : expr + k;
+  else if (k === "000") { if (num && num !== "0") expr += "000"; }
+  else if (k === ",") { if (!num.includes(",")) expr += num ? "," : "0,"; }
+  else if (OPS.includes(k)) {
+    if (!expr) return;
+    expr = OPS.includes(expr.at(-1)) ? expr.slice(0, -1) + k : expr + k;
+  } else if (k === "⌫") expr = expr.slice(0, -1);
+  else if (k === "C") expr = "";
+  else if (k === "=" || k === "OK") {
+    const value = evaluate(expr);
+    if (value != null && value > 0) expr = toRaw(value);
+    if (k === "OK" && value != null && value > 0) showKeypad(false);
+  }
+  renderAmount();
+}
+
+$("keypad").addEventListener("click", (ev) => {
+  const k = ev.target.closest("button")?.dataset.k;
+  if (k) pressKey(k);
+});
+$("fAmount").addEventListener("click", () => showKeypad($("keypad").hidden));
+// Typing in a text field hides the keypad so the two never stack.
+$("form").addEventListener("focusin", (ev) => { if (ev.target.matches("input, select")) showKeypad(false); });
 
 function fillSelect(select, values, current) {
   const options = [...new Set([...values, current].filter(Boolean))];
@@ -313,7 +426,9 @@ function setCurrency(currency) {
 }
 
 function openSheet(entry) {
-  const today = localDate();
+  // A new entry lands in the month on screen: today, or that month's last day.
+  const today = state.month === localDate().slice(0, 7) ? localDate()
+    : localDate(new Date(Number(state.month.slice(0, 4)), Number(state.month.slice(5)), 0));
   editing = entry ? { ...entry } : {
     id: crypto.randomUUID(), status: "ok", amount: null, currency: "ARS", category: null, merchant: null,
     payment_method: null, note: "", date: today, source: "manual", transcript: null,
@@ -324,9 +439,10 @@ function openSheet(entry) {
     payment_methods: [...new Set(state.entries.map((e) => e.payment_method))],
     currencies: ["ARS", "USD"],
   };
-  $("fAmount").value = editing.amount == null ? "" : fmtNumber(editing.amount);
+  expr = editing.amount == null ? "" : toRaw(editing.amount);
   $("fCurrency").replaceChildren(...cfg.currencies.map((c) =>
-    el("button", { type: "button", textContent: c, onclick: () => { editing.currency = c; setCurrency(c); } })));
+    el("button", { type: "button", textContent: c,
+      onclick: () => { editing.currency = c; setCurrency(c); renderAmount(); } })));
   setCurrency(editing.currency);
   fillSelect($("fCategory"), cfg.categories, editing.category);
   fillSelect($("fPayment"), cfg.payment_methods, editing.payment_method);
@@ -339,14 +455,15 @@ function openSheet(entry) {
   $("fAudio").src = editing.recording_id ? `api/recordings/${editing.recording_id}/audio` : "";
   $("fDelete").hidden = !entry;
   $("fDelete").textContent = "Borrar";
+  renderAmount();
+  showKeypad(!entry || editing.amount == null);
   $("sheet").showModal();
-  if (!entry) $("fAmount").focus();
 }
 
 $("form").addEventListener("submit", (ev) => {
   ev.preventDefault();
-  const amount = parseAmount($("fAmount").value);
-  if (amount == null) { $("fAmount").focus(); return; }
+  const amount = evaluate(expr);
+  if (amount == null || amount <= 0) { showKeypad(true); $("fAmount").classList.add("invalid"); return; }
   $("sheet").close();
   saveEntry({
     ...editing, amount, status: "ok",
